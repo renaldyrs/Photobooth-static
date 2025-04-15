@@ -292,7 +292,7 @@
         </div>
         <div class="action-buttons">
             <button onclick="retakePhoto()">Retake</button>
-            <button onclick="downloadPhoto()">Download</button>
+            <button onclick="downloadHDPhoto()">Download HD</button>
         </div>
     </div>
 
@@ -354,7 +354,7 @@
             }
         }
         
-        // Initialize camera
+        // Initialize camera with HD quality
         async function initCamera() {
             try {
                 showScreen('screen4-camera');
@@ -364,12 +364,13 @@
                 currentPhotoIndex = 0;
                 capturedPhotos = [];
                 
-                // Access the camera
+                // Access the camera with HD quality
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user', // Use 'environment' for rear camera
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        width: { ideal: 1920 }, // Request HD resolution
+                        height: { ideal: 1080 },
+                        frameRate: { ideal: 30 }
                     },
                     audio: false
                 });
@@ -382,8 +383,19 @@
                 
             } catch (err) {
                 console.error("Error accessing camera:", err);
-                alert("Could not access the camera. Please make sure you've granted camera permissions.");
-                showScreen('screen2');
+                // Fallback to lower resolution if HD not available
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                    const cameraView = document.getElementById('cameraView');
+                    cameraView.srcObject = stream;
+                    startCountdown();
+                } catch (fallbackErr) {
+                    alert("Could not access the camera. Please make sure you've granted camera permissions.");
+                    showScreen('screen2');
+                }
             }
         }
         
@@ -406,7 +418,7 @@
             }, 1000);
         }
         
-        // Capture photo from camera
+        // Capture high-quality photo from camera
         function capturePhoto() {
             // Trigger flash effect
             const flash = document.getElementById('flash');
@@ -419,15 +431,20 @@
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                // Set canvas dimensions to match video
+                // Set canvas dimensions to match video's native resolution
                 canvas.width = cameraView.videoWidth;
                 canvas.height = cameraView.videoHeight;
                 
-                // Draw video frame to canvas
+                // Draw video frame to canvas at full resolution
                 context.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
                 
-                // Save the captured photo
-                capturedPhotos.push(canvas.toDataURL('image/png'));
+                // Save the captured photo at full quality
+                capturedPhotos.push({
+                    url: canvas.toDataURL('image/png', 1.0), // Maximum quality
+                    width: canvas.width,
+                    height: canvas.height
+                });
+                
                 currentPhotoIndex++;
                 
                 // Check if we need more photos
@@ -464,7 +481,7 @@
                 cell.style.height = `${100/config.rows}%`;
                 
                 const img = document.createElement('img');
-                img.src = capturedPhotos[i];
+                img.src = capturedPhotos[i].url;
                 cell.appendChild(img);
                 
                 finalLayoutContainer.appendChild(cell);
@@ -489,23 +506,22 @@
             showScreen('screen3-layout');
         }
         
-        // Download photo - FIXED VERSION
-        function downloadPhoto() {
+        // Download HD photo
+        function downloadHDPhoto() {
             const finalLayout = document.getElementById('finalLayout');
             const borderWidth = 10; // Match this with your CSS border width
+            const hdScale = 2; // Scale factor for HD output
             
-            // Create a canvas with the exact dimensions of the final layout
+            // Create a canvas with higher resolution
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             
-            // Get computed dimensions
-            const style = window.getComputedStyle(finalLayout);
-            const width = parseInt(style.width);
-            const height = parseInt(style.height);
+            // Calculate HD dimensions
+            const baseWidth = 400; // Match your preview width
+            const baseHeight = baseWidth * (layoutConfig[selectedLayout].rows / layoutConfig[selectedLayout].cols);
             
-            // Set canvas dimensions
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = baseWidth * hdScale;
+            canvas.height = baseHeight * hdScale;
             
             // Draw the border
             context.fillStyle = selectedFrameColor;
@@ -514,51 +530,84 @@
             // Draw the white background for photos
             context.fillStyle = 'white';
             context.fillRect(
-                borderWidth, 
-                borderWidth, 
-                canvas.width - (borderWidth * 2), 
-                canvas.height - (borderWidth * 2)
+                borderWidth * hdScale, 
+                borderWidth * hdScale, 
+                canvas.width - (borderWidth * hdScale * 2), 
+                canvas.height - (borderWidth * hdScale * 2)
             );
             
-            // Draw each photo in the correct position
+            // Draw each photo in the correct position at HD quality
             const config = layoutConfig[selectedLayout];
-            const cells = document.querySelectorAll('.final-layout-cell');
+            const cellWidth = (canvas.width - (borderWidth * hdScale * 2)) / config.cols;
+            const cellHeight = (canvas.height - (borderWidth * hdScale * 2)) / config.rows;
             
             // Wait for all images to load
             let imagesLoaded = 0;
-            const totalImages = cells.length;
+            const totalImages = capturedPhotos.length;
             
             if (totalImages === 0) {
                 alert("No photos to download");
                 return;
             }
             
-            cells.forEach((cell, index) => {
+            capturedPhotos.forEach((photo, index) => {
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
-                img.src = capturedPhotos[index];
+                img.src = photo.url;
                 
                 img.onload = function() {
-                    const cellStyle = window.getComputedStyle(cell);
-                    const cellWidth = parseInt(cellStyle.width);
-                    const cellHeight = parseInt(cellStyle.height);
-                    const cellLeft = cell.offsetLeft;
-                    const cellTop = cell.offsetTop;
+                    // Calculate position
+                    const col = index % config.cols;
+                    const row = Math.floor(index / config.cols);
                     
-                    // Calculate position with border offset
-                    const x = borderWidth + cellLeft;
-                    const y = borderWidth + cellTop;
+                    const x = borderWidth * hdScale + (col * cellWidth);
+                    const y = borderWidth * hdScale + (row * cellHeight);
                     
-                    // Draw the image
-                    context.drawImage(img, x, y, cellWidth, cellHeight);
+                    // Calculate scaling to maintain aspect ratio
+                    const photoAspect = photo.width / photo.height;
+                    const cellAspect = cellWidth / cellHeight;
+                    
+                    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+                    
+                    if (photoAspect > cellAspect) {
+                        // Photo is wider than cell
+                        drawHeight = cellHeight;
+                        drawWidth = photo.width * (cellHeight / photo.height);
+                        offsetX = (cellWidth - drawWidth) / 2;
+                    } else {
+                        // Photo is taller than cell
+                        drawWidth = cellWidth;
+                        drawHeight = photo.height * (cellWidth / photo.width);
+                        offsetY = (cellHeight - drawHeight) / 2;
+                    }
+                    
+                    // Draw the image centered in the cell
+                    context.drawImage(
+                        img, 
+                        x + offsetX, 
+                        y + offsetY, 
+                        drawWidth, 
+                        drawHeight
+                    );
                     
                     imagesLoaded++;
                     
                     // When all images are loaded, trigger download
                     if (imagesLoaded === totalImages) {
+                        // Add some branding text
+                        context.font = `${20 * hdScale}px Arial`;
+                        context.fillStyle = selectedFrameColor;
+                        context.textAlign = 'center';
+                        context.fillText(
+                            'Cekrek Photobooth', 
+                            canvas.width / 2, 
+                            canvas.height - (borderWidth * hdScale / 2)
+                        );
+                        
+                        // Trigger download
                         const link = document.createElement('a');
-                        link.download = 'cekrek-photo.png';
-                        link.href = canvas.toDataURL('image/png');
+                        link.download = 'cekrek-photo-hd.png';
+                        link.href = canvas.toDataURL('image/png', 1.0); // Highest quality
                         link.click();
                     }
                 };
@@ -571,7 +620,7 @@
         }
         
         // Clean up when leaving the page
-      window.addEventListener('beforeunload', () => {
+        window.addEventListener('beforeunload', () => {
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
