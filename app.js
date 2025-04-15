@@ -221,6 +221,9 @@
             for (let i = 0; i < capturedPhotos.length; i++) {
                 const img = new Image();
                 img.src = capturedPhotos[i];
+img.style.width = `${100/config.cols}%`;
+                img.style.height = `${100/config.rows}%`;
+                img.style.objectFit = 'cover';
                 
                 const col = i % config.cols;
                 const row = Math.floor(i / config.cols);
