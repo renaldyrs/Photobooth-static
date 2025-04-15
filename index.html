@@ -4,9 +4,216 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cekrek Photobooth</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="app.js" defer></script>
-    
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+        
+        .screen {
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+            padding: 30px;
+            text-align: center;
+            display: none;
+        }
+        
+        .active {
+            display: block;
+        }
+        
+        h1 {
+            color: #ff6b6b;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        button {
+            background-color: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            background-color: #ff5252;
+            transform: translateY(-2px);
+        }
+        
+        .frame-options {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
+        .frame-option {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 3px solid transparent;
+        }
+        
+        .frame-option.selected {
+            border-color: #ff6b6b;
+        }
+        
+        .layout-options {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }
+        
+        .layout-option {
+            width: 100px;
+            height: 100px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            background-color: #eee;
+            display: flex;
+            flex-wrap: wrap;
+            overflow: hidden;
+        }
+        
+        .layout-option.selected {
+            border-color: #ff6b6b;
+        }
+        
+        .layout-cell {
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+        }
+        
+        .action-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .action-buttons button {
+            padding: 10px 20px;
+        }
+        
+        #cameraView {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        #countdown {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff6b6b;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px 0;
+        }
+        
+        .flash {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            opacity: 0;
+            pointer-events: none;
+            border-radius: 10px;
+        }
+        
+        .flash-animation {
+            animation: flash 0.5s;
+        }
+        
+        @keyframes flash {
+            0% { opacity: 0; }
+            50% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        
+        .layout-preview {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .layout-preview-cell {
+            box-sizing: border-box;
+            background-color: #ddd;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        #finalLayout {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            border: 10px solid #ff6b6b;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .final-layout-container {
+            display: flex;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        
+        .final-layout-cell {
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        .final-layout-cell img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
 </head>
 <body>
     <!-- Screen 1: Product Catalog -->
@@ -73,7 +280,9 @@
     <div class="screen" id="screen5-preview">
         <h1>Cekrek</h1>
         <h2>Select your frame color!</h2>
-        <div id="finalLayout"></div>
+        <div id="finalLayout">
+            <div class="final-layout-container" id="finalLayoutContainer"></div>
+        </div>
         <div class="frame-options">
             <div class="frame-option selected" style="background-color: #ff6b6b;" onclick="selectFrame(this, '#ff6b6b')"></div>
             <div class="frame-option" style="background-color: #48dbfb;" onclick="selectFrame(this, '#48dbfb')"></div>
@@ -87,6 +296,289 @@
         </div>
     </div>
 
-    
+    <script>
+        // Global variables
+        let stream = null;
+        let selectedFrameColor = '#ff6b6b';
+        let countdownInterval = null;
+        let currentPhotoIndex = 0;
+        let capturedPhotos = [];
+        let selectedLayout = 'single';
+        let layoutConfig = {
+            'single': { cols: 1, rows: 1, photosNeeded: 1 },
+            'vertical': { cols: 1, rows: 2, photosNeeded: 2 },
+            'horizontal': { cols: 2, rows: 1, photosNeeded: 2 },
+            'grid': { cols: 2, rows: 2, photosNeeded: 4 }
+        };
+        
+        // Simple screen navigation
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+            
+            // Update layout preview when showing layout selection
+            if (screenId === 'screen3-layout') {
+                updateLayoutPreview();
+            }
+        }
+        
+        // Select layout type
+        function selectLayout(element, layoutType) {
+            document.querySelectorAll('.layout-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            selectedLayout = layoutType;
+            updateLayoutPreview();
+        }
+        
+        // Update the layout preview
+        function updateLayoutPreview() {
+            const preview = document.getElementById('layoutPreview');
+            preview.innerHTML = '';
+            
+            const config = layoutConfig[selectedLayout];
+            preview.style.height = `${config.rows * 50}px`;
+            
+            for (let i = 0; i < config.rows; i++) {
+                for (let j = 0; j < config.cols; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'layout-preview-cell';
+                    cell.style.width = `${100/config.cols}%`;
+                    cell.style.height = `${100/config.rows}%`;
+                    cell.textContent = `Photo ${i * config.cols + j + 1}`;
+                    preview.appendChild(cell);
+                }
+            }
+        }
+        
+        // Initialize camera
+        async function initCamera() {
+            try {
+                showScreen('screen4-camera');
+                document.getElementById('cameraView').style.display = 'block';
+                
+                // Reset photo capture state
+                currentPhotoIndex = 0;
+                capturedPhotos = [];
+                
+                // Access the camera
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user', // Use 'environment' for rear camera
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                
+                const cameraView = document.getElementById('cameraView');
+                cameraView.srcObject = stream;
+                
+                // Start countdown for first photo
+                startCountdown();
+                
+            } catch (err) {
+                console.error("Error accessing camera:", err);
+                alert("Could not access the camera. Please make sure you've granted camera permissions.");
+                showScreen('screen2');
+            }
+        }
+        
+        // Start countdown for photo capture
+        function startCountdown() {
+            let seconds = 3;
+            const countdownElement = document.getElementById('countdown');
+            countdownElement.style.display = 'block';
+            countdownElement.textContent = `Photo ${currentPhotoIndex + 1} in ${seconds}...`;
+            
+            countdownInterval = setInterval(() => {
+                seconds--;
+                countdownElement.textContent = `Photo ${currentPhotoIndex + 1} in ${seconds}...`;
+                
+                if (seconds <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownElement.style.display = 'none';
+                    capturePhoto();
+                }
+            }, 1000);
+        }
+        
+        // Capture photo from camera
+        function capturePhoto() {
+            // Trigger flash effect
+            const flash = document.getElementById('flash');
+            flash.classList.add('flash-animation');
+            
+            setTimeout(() => {
+                flash.classList.remove('flash-animation');
+                
+                const cameraView = document.getElementById('cameraView');
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                
+                // Set canvas dimensions to match video
+                canvas.width = cameraView.videoWidth;
+                canvas.height = cameraView.videoHeight;
+                
+                // Draw video frame to canvas
+                context.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
+                
+                // Save the captured photo
+                capturedPhotos.push(canvas.toDataURL('image/png'));
+                currentPhotoIndex++;
+                
+                // Check if we need more photos
+                const photosNeeded = layoutConfig[selectedLayout].photosNeeded;
+                if (currentPhotoIndex < photosNeeded) {
+                    startCountdown();
+                } else {
+                    // All photos captured, show preview
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+                    createFinalLayout();
+                    showScreen('screen5-preview');
+                }
+            }, 100);
+        }
+        
+        // Create the final layout with all photos
+        function createFinalLayout() {
+            const finalLayoutContainer = document.getElementById('finalLayoutContainer');
+            finalLayoutContainer.innerHTML = '';
+            
+            const config = layoutConfig[selectedLayout];
+            
+            // Set the container style
+            finalLayoutContainer.style.display = 'flex';
+            finalLayoutContainer.style.flexWrap = 'wrap';
+            finalLayoutContainer.style.width = '100%';
+            
+            for (let i = 0; i < capturedPhotos.length; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'final-layout-cell';
+                cell.style.width = `${100/config.cols}%`;
+                cell.style.height = `${100/config.rows}%`;
+                
+                const img = document.createElement('img');
+                img.src = capturedPhotos[i];
+                cell.appendChild(img);
+                
+                finalLayoutContainer.appendChild(cell);
+            }
+            
+            // Update the frame color
+            document.getElementById('finalLayout').style.borderColor = selectedFrameColor;
+        }
+        
+        // Frame selection
+        function selectFrame(element, color) {
+            document.querySelectorAll('.frame-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            selectedFrameColor = color;
+            document.getElementById('finalLayout').style.borderColor = color;
+        }
+        
+        // Retake photo
+        function retakePhoto() {
+            showScreen('screen3-layout');
+        }
+        
+        // Download photo - FIXED VERSION
+        function downloadPhoto() {
+            const finalLayout = document.getElementById('finalLayout');
+            const borderWidth = 10; // Match this with your CSS border width
+            
+            // Create a canvas with the exact dimensions of the final layout
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            // Get computed dimensions
+            const style = window.getComputedStyle(finalLayout);
+            const width = parseInt(style.width);
+            const height = parseInt(style.height);
+            
+            // Set canvas dimensions
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Draw the border
+            context.fillStyle = selectedFrameColor;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw the white background for photos
+            context.fillStyle = 'white';
+            context.fillRect(
+                borderWidth, 
+                borderWidth, 
+                canvas.width - (borderWidth * 2), 
+                canvas.height - (borderWidth * 2)
+            );
+            
+            // Draw each photo in the correct position
+            const config = layoutConfig[selectedLayout];
+            const cells = document.querySelectorAll('.final-layout-cell');
+            
+            // Wait for all images to load
+            let imagesLoaded = 0;
+            const totalImages = cells.length;
+            
+            if (totalImages === 0) {
+                alert("No photos to download");
+                return;
+            }
+            
+            cells.forEach((cell, index) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.src = capturedPhotos[index];
+                
+                img.onload = function() {
+                    const cellStyle = window.getComputedStyle(cell);
+                    const cellWidth = parseInt(cellStyle.width);
+                    const cellHeight = parseInt(cellStyle.height);
+                    const cellLeft = cell.offsetLeft;
+                    const cellTop = cell.offsetTop;
+                    
+                    // Calculate position with border offset
+                    const x = borderWidth + cellLeft;
+                    const y = borderWidth + cellTop;
+                    
+                    // Draw the image
+                    context.drawImage(img, x, y, cellWidth, cellHeight);
+                    
+                    imagesLoaded++;
+                    
+                    // When all images are loaded, trigger download
+                    if (imagesLoaded === totalImages) {
+                        const link = document.createElement('a');
+                        link.download = 'cekrek-photo.png';
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                    }
+                };
+                
+                img.onerror = function() {
+                    console.error("Error loading image for download");
+                    imagesLoaded++;
+                };
+            });
+        }
+        
+        // Clean up when leaving the page
+      window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+        });
+    </script>
 </body>
 </html>
